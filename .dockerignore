@@ -12,3 +12,5 @@ docs
 .mineru-venv
 
 .mineru-service.lock
+
+/blobs/
