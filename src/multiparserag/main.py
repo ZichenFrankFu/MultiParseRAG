@@ -47,12 +47,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         repository.recover()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="parse") as executor:
-            app.state.executor = executor
-            for document in repository.list():
-                if document.status == "queued":
-                    executor.submit(pipeline.convert, document.document_id)
-            yield
+        try:
+            with ThreadPoolExecutor(max_workers=1, thread_name_prefix="parse") as executor:
+                app.state.executor = executor
+                for document in repository.list():
+                    if document.status == "queued":
+                        executor.submit(pipeline.convert, document.document_id)
+                yield
+        finally:
+            pipeline.vectors.close()
 
     app = FastAPI(title="MultiParseRAG", version=__version__, lifespan=lifespan)
     app.state.pipeline = pipeline
@@ -90,9 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "mineru_target_version": "4.1.7",
             "mineru_configured": settings.mineru_mode == "http"
             or bool(shutil.which(settings.mineru_command)),
-            "ragflow_configured": bool(
-                settings.ragflow_api_key.get_secret_value() and settings.dataset_ids
-            ),
+            "milvus_configured": bool(settings.dataset_ids),
+            "embedding_configured": bool(settings.embedding_model),
             "dataset_ids": settings.dataset_ids,
             "max_upload_mb": settings.max_upload_mb,
             "connectivity_verified": False,
@@ -190,24 +192,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return pipeline.refresh_index(str(document_id))
 
     @app.post(
-        "/api/v1/documents/{document_id}/index/link", response_model=Document, dependencies=auth
+        "/api/v1/documents/{document_id}/index/link",
+        status_code=409,
+        dependencies=auth,
+        deprecated=True,
     )
     def link_index(document_id: UUID, body: LinkIndexRequest):
-        doc = get_document(document_id)
-        if doc.status != "ready" or doc.index_status != "unknown":
-            raise HTTPException(409, "仅允许为上传结果未确认的已解析文档恢复关联。")
-        if doc.dataset_id != body.dataset_id:
-            raise HTTPException(409, "知识库与原提交不一致。")
-        remote = pipeline.ragflow.document(body.dataset_id, body.document_id)
-        if remote.get("name") != f"{document_id}.md":
-            raise HTTPException(409, "远程文档名称与本次提交不一致。")
-        return repository.update(
-            str(document_id),
-            dataset_id=body.dataset_id,
-            ragflow_document_id=body.document_id,
-            index_status="failed",
-            index_error="关联已恢复，可再次提交解析。",
-        )
+        get_document(document_id)
+        raise HTTPException(409, "历史 RAGFlow 关联已停用，请通过 /index 提交 Milvus 索引。")
 
     @app.post("/api/v1/context", response_model=ContextResponse, dependencies=auth)
     def context(body: ContextRequest):

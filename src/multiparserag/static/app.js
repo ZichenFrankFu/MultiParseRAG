@@ -16,6 +16,13 @@ const statuses = {
   ready: "解析完成",
   failed: "处理失败",
 };
+const intentLabels = {
+  lookup: "查找事实",
+  summarize: "总结资料",
+  compare: "对比资料",
+  how_to: "查询步骤",
+  small_talk: "闲聊",
+};
 let apiKey = sessionStorage.getItem("mpr-api-key") || "";
 $("#api-key").value = apiKey;
 function node(tag, text, className) {
@@ -167,7 +174,8 @@ function renderDetail() {
   $("#retry-button").hidden = doc.status !== "failed";
   $("#index-button").disabled =
     doc.status !== "ready" ||
-    !state.status?.ragflow_configured ||
+    !state.status?.milvus_configured ||
+    !state.status?.embedding_configured ||
     ["uploading", "indexing", "indexed", "unknown"].includes(doc.index_status);
   $("#index-button").textContent =
     doc.index_status === "indexed"
@@ -175,7 +183,7 @@ function renderDetail() {
       : doc.index_status === "indexing"
         ? "索引处理中"
         : "提交索引";
-  $("#index-refresh-button").hidden = !doc.ragflow_document_id;
+  $("#index-refresh-button").hidden = doc.index_provider !== "milvus";
   const message = doc.error || doc.index_error;
   $("#detail-message").hidden = !message;
   $("#detail-message").textContent = message || "";
@@ -246,16 +254,21 @@ $("#download-button").addEventListener("click", async () => {
   }
 });
 $("#index-button").addEventListener("click", async () => {
-  const dataset = $("#dataset-select").value || state.status?.dataset_ids[0];
-  if (!dataset) return toast("请先配置 RAGFlow 知识库。", true);
+  const doc = state.documents.find((d) => d.document_id === state.selectedId);
+  if (!doc) return;
+  const datasets = state.status?.dataset_ids || [];
+  const dataset = datasets.includes(doc.dataset_id)
+    ? doc.dataset_id
+    : $("#dataset-select").value || datasets[0];
+  if (!dataset) return toast("请先配置 Milvus 知识库。", true);
   const button = $("#index-button");
   button.disabled = true;
   try {
-    await api(`/documents/${state.selectedId}/index`, {
+    await api(`/documents/${doc.document_id}/index`, {
       method: "POST",
       body: JSON.stringify({ dataset_id: dataset }),
     });
-    toast("已提交 RAGFlow，请检查索引状态。");
+    toast("Milvus 索引已完成。");
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -282,28 +295,40 @@ $("#query-button").addEventListener("click", async () => {
   $("#copy-context").disabled = true;
   $("#context-preview").hidden = true;
   $("#response-details").hidden = true;
+  $("#intent-result").hidden = true;
   $("#evidence-list").replaceChildren();
-  $("#query-note").textContent = "正在向知识库检索证据…";
+  $("#query-note").className = "notice";
+  $("#query-note").textContent = "正在处理查询…";
   try {
     const dataset = $("#dataset-select").value;
     const result = await api("/context", {
       method: "POST",
       body: JSON.stringify({
         query,
+        intent: $("#intent-select").value,
         dataset_ids: dataset ? [dataset] : [],
         top_k: Number($("#top-k").value),
       }),
     });
     state.context = result;
+    const intent = intentLabels[result.intent];
+    if (intent) {
+      const details = [`用户意图：${intent}`];
+      if (result.retrieval_query && result.retrieval_query !== result.query)
+        details.push(`检索词：${result.retrieval_query}`);
+      $("#intent-result").textContent = details.join(" · ");
+      $("#intent-result").hidden = false;
+    }
     $("#context-preview").hidden = !result.context_text;
     $("#context-preview").textContent = result.context_text;
     $("#context-json").textContent = JSON.stringify(result, null, 2);
     $("#response-details").hidden = false;
     $("#copy-context").disabled = !result.context_text;
-    $("#query-note").className = "notice";
     $("#query-note").textContent =
       result.missing_information.join(" ") ||
-      `找到 ${result.evidence.length} 条证据。片段为检索原文，可用于后续生成。`;
+      (result.intent === "small_talk"
+        ? "闲聊无需检索文档。"
+        : `找到 ${result.evidence.length} 条证据。`);
     for (const item of result.evidence) {
       const card = node("article", undefined, "evidence-card");
       card.append(
@@ -356,9 +381,14 @@ async function loadStatus() {
         configured: true,
       },
       {
-        name: "RAGFlow",
-        description: "索引、混合检索与证据召回",
-        configured: status.ragflow_configured,
+        name: "Milvus",
+        description: "向量索引与证据召回",
+        configured: status.milvus_configured,
+      },
+      {
+        name: "向量模型",
+        description: "将文档片段与检索词转换为向量",
+        configured: status.embedding_configured,
       },
     ];
     $("#service-list").replaceChildren();

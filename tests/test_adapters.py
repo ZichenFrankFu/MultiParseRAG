@@ -6,11 +6,12 @@ import httpx
 import pytest
 from PIL import Image
 
+from multiparserag.adapters.embeddings import Embeddings
+from multiparserag.adapters.milvus import CHUNK_LENGTH, Milvus, split_markdown
 from multiparserag.adapters.mineru import MinerU, unpack_result
-from multiparserag.adapters.ragflow import RAGFlow
 from multiparserag.adapters.storage import AssetStorage
 from multiparserag.assets import publish_images
-from multiparserag.models import ContextRequest, ServiceError
+from multiparserag.models import Document, ServiceError
 
 
 def use_transport(monkeypatch, handler):
@@ -143,25 +144,59 @@ def test_private_minio_bucket_fails(settings, monkeypatch):
         storage.publish("doc", png, "images/chart.png")
 
 
-def test_ragflow_contract_and_business_errors(settings, monkeypatch):
-    calls = []
+def test_embeddings_contract_orders_vectors_by_index(settings, monkeypatch):
+    settings.embedding_base_url = "http://embeddings.test/v1"
 
     def handler(request):
-        calls.append(request)
         assert request.headers["authorization"] == "Bearer test-key"
-        if request.url.path.endswith("/retrieval"):
-            body = json.loads(request.content)
-            assert body["question"] == "question"
-            assert body["page_size"] == 3
-            return httpx.Response(200, json={"code": 0, "data": {"chunks": []}})
-        return httpx.Response(200, json={"code": 109, "message": "secret upstream message"})
+        assert request.url.path == "/v1/embeddings"
+        assert json.loads(request.content) == {
+            "model": "test-embedding",
+            "input": ["检索词", "document"],
+        }
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"index": 1, "embedding": [0, 1, 0]}, {"index": 0, "embedding": [1, 0, 0]}]
+            },
+        )
 
     use_transport(monkeypatch, handler)
-    adapter = RAGFlow(settings)
-    assert adapter.retrieve(ContextRequest(query="question", top_k=3)) == (["kb-1"], [])
-    with pytest.raises(ServiceError, match="109"):
-        adapter.parse("kb-1", "document")
-    with pytest.raises(ServiceError) as error:
-        adapter.retrieve(ContextRequest(query="question", dataset_ids=["foreign"]))
-    assert error.value.status_code == 403
-    assert len(calls) == 2
+    assert Embeddings(settings).embed(["检索词", "document"]) == [[1, 0, 0], [0, 1, 0]]
+
+
+def test_embeddings_reject_invalid_dimension(settings, monkeypatch):
+    use_transport(
+        monkeypatch,
+        lambda req: httpx.Response(200, json={"data": [{"index": 0, "embedding": [1, 0]}]}),
+    )
+    with pytest.raises(ServiceError, match="维度"):
+        Embeddings(settings).embed(["fact"])
+
+
+def test_milvus_retry_reuses_chunk_ids_and_preserves_content(settings, monkeypatch):
+    doc = Document(
+        document_id="doc-id",
+        filename="source.pdf",
+        source_sha256="abc",
+        markdown="# 标题\n\n" + "字" * (CHUNK_LENGTH + 1) + "\n\n尾段。",
+    )
+    chunks = split_markdown(doc.markdown)
+    assert all(0 < len(chunk) <= CHUNK_LENGTH for chunk in chunks)
+    assert "".join("".join(chunks).split()) == "".join(doc.markdown.split())
+
+    adapter = Milvus(settings)
+    monkeypatch.setattr(adapter, "_collection", Mock(return_value=True))
+    monkeypatch.setattr(adapter.embeddings, "embed", lambda texts: [[1, 0, 0] for _ in texts])
+    store = Mock()
+    store.upsert.side_effect = [{"upsert_count": 0}, {"upsert_count": len(chunks)}]
+    monkeypatch.setattr(adapter, "_client", store)
+    with pytest.raises(ServiceError, match="未确认"):
+        adapter.index(doc, "kb-1")
+    adapter.index(doc, "kb-1")
+
+    first, second = (call.args[1] for call in store.upsert.call_args_list)
+    assert first == second
+    assert len({row["id"] for row in second}) == len(chunks)
+    assert [row["content"] for row in second] == chunks
+    assert {row["dataset_id"] for row in second} == {"kb-1"}

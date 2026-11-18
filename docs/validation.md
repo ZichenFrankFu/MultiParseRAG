@@ -1,6 +1,14 @@
 # v0.0.1 验证记录
 
-## 已在开发环境完成
+## User Intent 与 Milvus 验证
+
+- 使用 Milvus Standalone `2.6.14` 和 PyMilvus 验证建立索引、余弦相似度检索、知识库和文档过滤、相似度阈值、证据引用及图片关联。重启应用后仍可检索已写入的向量。集合卸载后，索引、状态检查和检索均可自动重新加载集合。
+- 使用合成 MinerU ZIP 和确定性的 OpenAI 兼容嵌入测试服务验证 FastAPI 链路。模拟第二批嵌入失败，确认未完成的索引不会出现在证据中，重试后分块无重复。`scripts/smoke_live.py` 也通过了带 API 鉴权的真实 HTTP 调用和匿名图片读取检查。
+- 用旧版 SQLite 记录验证保留 Markdown 后可重建 Milvus 索引，旧文档 ID 仍能用于过滤。
+- 工作台在 Chromium 的 1440px 和 390px 宽度下，通过模拟 API 验证索引操作、自动和手动意图、证据展示及闲聊状态。
+- 嵌入模型在实际资料上的召回效果需用部署的模型验收，可运行下方真实服务脚本。
+
+## 基础版本的验证记录
 
 - 34 项自动化测试通过；GitHub Actions 的 Python 3.11、3.12、3.13 矩阵均通过，包括 Ruff、OpenAPI 一致性、依赖导出一致性和 JavaScript 语法检查。
 - MinerU **4.1.7 / flash**：使用包含正文与插图的自制 PDF，分别验证 CLI 和 HTTP file-parse-server 的真实解析。
@@ -11,10 +19,7 @@
 
 ## 仍需部署环境验收
 
-- RAGFlow 尚未配置部署、嵌入模型及 API Key。已完成 HTTP 契约、业务错误、索引恢复、状态枚举和上下文证据测试；真实索引与检索需要运行 `scripts/smoke_live.py --dataset-id ...`。
 - MinerU `basic/standard/advanced` 和复杂扫描资料尚未进行质量验收。
-
-开发执行器未提供 Docker daemon，并限制 MinIO 获取主机网卡信息；相关验证已在 GitHub Actions 的 Docker 环境完成。
 
 ## 复验命令
 
@@ -28,7 +33,7 @@ node --check src/multiparserag/static/app.js
 uv run python scripts/smoke_live.py your-image-document.pdf --require-images
 ```
 
-配置 RAGFlow 后：
+配置 Milvus 和向量模型后运行完整链路验收。
 
 ```bash
 uv run python scripts/smoke_live.py your-image-document.pdf --require-images --dataset-id your-dataset-id --query "文档中的一个可核实问题"

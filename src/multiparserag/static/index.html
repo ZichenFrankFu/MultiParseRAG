@@ -82,7 +82,7 @@
             <article>
               <span class="stat-label">已建索引 <span>⌕</span></span
               ><strong id="stat-indexed">0</strong
-              ><small>RAGFlow 确认完成</small>
+              ><small>已写入 Milvus</small>
             </article>
           </div>
           <div class="workflow">
@@ -201,7 +201,7 @@
           </section>
           <div class="bottom-note">
             <span>●</span> 统一输入、独立存储、可追溯输出
-            <span class="note-end">POWERED BY MINERU · MINIO · RAGFLOW</span>
+            <span class="note-end">POWERED BY MINERU · MINIO · MILVUS</span>
           </div>
         </section>
         <section class="page-view" id="view-retrieval" hidden>
@@ -226,6 +226,15 @@
                   <option value="">使用配置的知识库</option>
                 </select></label
               ><label
+                >用户意图<select id="intent-select">
+                  <option value="auto">自动识别</option>
+                  <option value="lookup">查找事实</option>
+                  <option value="summarize">总结资料</option>
+                  <option value="compare">对比资料</option>
+                  <option value="how_to">查询步骤</option>
+                  <option value="small_talk">闲聊</option>
+                </select></label
+              ><label
                 >返回片段<select id="top-k">
                   <option>3</option>
                   <option selected>5</option>
@@ -243,8 +252,9 @@
                 复制上下文
               </button>
             </div>
-            <p id="query-note" class="notice">
-              请先配置 RAGFlow 并完成文档索引。
+            <p id="intent-result" class="notice" aria-live="polite" hidden></p>
+            <p id="query-note" class="notice" aria-live="polite">
+              检索资料前，请配置 Milvus 和向量模型并完成文档索引。
             </p>
             <pre id="context-preview" class="code-panel" hidden></pre>
             <div id="evidence-list"></div>
@@ -278,7 +288,7 @@
               /><button class="button primary" id="save-key">连接</button>
             </div>
             <p class="privacy-note">
-              密钥只保存在当前标签页的会话中。MinerU、MinIO、RAGFlow
+              密钥只保存在当前标签页的会话中。MinerU、MinIO、Milvus 和向量模型的
               凭证请在服务端 .env 配置。
             </p>
             <div class="config-help">
@@ -287,7 +297,7 @@
                 <li>启动 MinIO 并初始化专用图片桶。</li>
                 <li>启动 MinerU 解析服务与 file-parse-server。</li>
                 <li>启动工作台，上传 PDF 验证 Markdown 与图片链接。</li>
-                <li>按需连接 RAGFlow，配置模型与知识库后提交索引。</li>
+                <li>配置 Milvus、向量模型与知识库后提交索引。</li>
               </ol>
               <a class="text-link" href="/docs" target="_blank" rel="noopener"
                 >查看输入输出接口 ↗</a

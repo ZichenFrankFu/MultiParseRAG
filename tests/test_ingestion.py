@@ -117,15 +117,15 @@ def test_restart_recovery_and_auth(settings):
         assert client.get("/api/v1/documents").status_code == 401
         response = client.get("/api/v1/documents", headers={"X-API-Key": "private-key"})
         assert response.json()["items"][0]["status"] == "failed"
-        assert response.json()["items"][0]["index_status"] == "unknown"
+        assert response.json()["items"][0]["index_status"] == "not_indexed"
         status = client.get("/api/v1/status", headers={"X-API-Key": "private-key"})
         assert "private-key" not in status.text
 
 
 def test_schema_strict_and_unconfigured(settings):
-    settings.ragflow_dataset_ids = ""
+    settings.milvus_dataset_ids = ""
     with TestClient(create_app(settings)) as client:
-        assert client.post("/api/v1/context", json={"query": "hello"}).status_code == 503
+        assert client.post("/api/v1/context", json={"query": "what is a fact?"}).status_code == 503
         assert client.post("/api/v1/context", json={"query": " "}).status_code == 422
         assert (
             client.post("/api/v1/context", json={"query": "hello", "unknown": True}).status_code

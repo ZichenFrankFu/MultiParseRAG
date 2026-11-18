@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -28,14 +29,21 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_bucket: str = "multiparserag-images"
     minio_public_base_url: str = "http://localhost:19000/multiparserag-images"
-    ragflow_base_url: str = "http://localhost:9380"
-    ragflow_api_key: SecretStr = SecretStr("")
-    ragflow_dataset_ids: str = ""
+    milvus_uri: str = "http://localhost:19530"
+    milvus_token: SecretStr = SecretStr("")
+    milvus_collection: str = Field(
+        "multiparserag_chunks", max_length=255, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$"
+    )
+    milvus_dataset_ids: str = ""
+    embedding_base_url: str = "http://localhost:11434/v1"
+    embedding_api_key: SecretStr = SecretStr("")
+    embedding_model: str = ""
+    embedding_dimension: int = Field(768, ge=2, le=32768)
 
     @property
     def dataset_ids(self) -> list[str]:
         return list(
-            dict.fromkeys(x.strip() for x in self.ragflow_dataset_ids.split(",") if x.strip())
+            dict.fromkeys(x.strip() for x in self.milvus_dataset_ids.split(",") if x.strip())
         )
 
     @model_validator(mode="after")
@@ -44,7 +52,8 @@ class Settings(BaseSettings):
             "public_base_url",
             "mineru_base_url",
             "minio_public_base_url",
-            "ragflow_base_url",
+            "milvus_uri",
+            "embedding_base_url",
         ):
             value = urlparse(getattr(self, name))
             if value.scheme not in {"http", "https"} or not value.netloc:
@@ -53,6 +62,9 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} must not include credentials, query, or fragment")
         if "://" in self.minio_endpoint:
             raise ValueError("minio_endpoint must be host:port, without a URL scheme")
+        if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", dataset) for dataset in self.dataset_ids):
+            raise ValueError("MPR_MILVUS_DATASET_IDS contains an invalid dataset ID")
+        self.embedding_model = self.embedding_model.strip()
         if (
             self.host not in {"localhost", "127.0.0.1", "::1"}
             and not self.api_key.get_secret_value()

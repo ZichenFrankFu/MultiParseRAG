@@ -17,6 +17,7 @@ dependencies = [
   "minio==7.2.20",
   "markdown-it-py>=3,<5",
   "pillow>=11.3,<13",
+  "pymilvus==2.6.14",
 ]
 
 [dependency-groups]
