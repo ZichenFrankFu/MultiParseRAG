@@ -1,0 +1,68 @@
+name: multiparserag
+services:
+  minio:
+    build: ./infra/minio
+    image: multiparserag-minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MPR_MINIO_ACCESS_KEY:-local-development}
+      MINIO_ROOT_PASSWORD: ${MPR_MINIO_SECRET_KEY:-local-development-change-this}
+    ports:
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:19001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  storage-init:
+    build: .
+    profiles: [app]
+    env_file: .env
+    environment:
+      MPR_HOST: 127.0.0.1
+      MPR_STORAGE_BACKEND: minio
+      MPR_MINIO_ENDPOINT: minio:9000
+      MPR_MINIO_SECURE: "false"
+    command: ["multiparserag-init-storage"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    profiles: [app]
+    env_file: .env
+    environment:
+      MPR_HOST: 0.0.0.0
+      MPR_API_KEY: ${MPR_API_KEY:-}
+      MPR_DATA_DIR: /app/data
+      MPR_STORAGE_BACKEND: minio
+      MPR_MINIO_ENDPOINT: minio:9000
+      MPR_MINIO_SECURE: "false"
+      MPR_MINERU_MODE: http
+      MPR_MINERU_BASE_URL: http://host.docker.internal:8003
+      MPR_RAGFLOW_BASE_URL: http://host.docker.internal:9380
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+volumes:
+  minio-data:
+  app-data:

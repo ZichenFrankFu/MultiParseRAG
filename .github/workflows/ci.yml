@@ -1,0 +1,61 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.6'
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check src tests scripts
+      - run: uv run pytest -q
+      - run: uv run python scripts/export_schema.py --check
+      - run: uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file requirements.lock && git diff --exit-code -- requirements.lock
+      - run: node --check src/multiparserag/static/app.js
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env && echo 'MPR_API_KEY=ci-local-test-key' >> .env
+      - run: docker compose --profile app config --quiet
+      - run: docker compose --profile app up --build -d --wait --wait-timeout 180
+      - name: Verify HTTP and MinIO readiness
+        run: |
+          curl --fail http://localhost:8080/healthz
+          curl --fail -H 'X-API-Key: ci-local-test-key' http://localhost:8080/api/v1/status
+          curl --fail http://localhost:19000/minio/health/live
+      - name: Verify actual image publication and anonymous public URL
+        run: |
+          docker compose exec -T app python - <<'PY' > /tmp/public-image-url.txt
+          from pathlib import Path
+          from PIL import Image
+          from multiparserag.config import Settings
+          from multiparserag.adapters.storage import AssetStorage
+          path = Path('/tmp/storage-smoke.png')
+          Image.new('RGB', (16, 16), '#ee794d').save(path)
+          asset = AssetStorage(Settings()).publish('ci-smoke', path, 'images/smoke.png')
+          print(asset.url)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.request import urlopen
+          url = Path('/tmp/public-image-url.txt').read_text().strip()
+          with urlopen(url, timeout=10) as response:
+              assert response.headers['content-type'] == 'image/png'
+              assert response.read().startswith(b'\x89PNG')
+          print('Anonymous public image GET passed')
+          PY
+      - if: always()
+        run: docker compose --profile app down -v
