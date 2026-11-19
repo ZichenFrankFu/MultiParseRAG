@@ -47,7 +47,8 @@ services:
       MPR_MINIO_SECURE: "false"
       MPR_MINERU_MODE: http
       MPR_MINERU_BASE_URL: http://host.docker.internal:8003
-      MPR_RAGFLOW_BASE_URL: http://host.docker.internal:9380
+      MPR_MILVUS_URI: ${MPR_DOCKER_MILVUS_URI:-http://host.docker.internal:19530}
+      MPR_EMBEDDING_BASE_URL: ${MPR_DOCKER_EMBEDDING_BASE_URL:-http://host.docker.internal:11434/v1}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

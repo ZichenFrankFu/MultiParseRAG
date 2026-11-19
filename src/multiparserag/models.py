@@ -40,13 +40,18 @@ class Document(StrictModel):
     index_status: Literal[
         "not_indexed", "uploading", "indexing", "indexed", "failed", "unknown"
     ] = "not_indexed"
+    index_provider: Literal["milvus"] | None = None
     dataset_id: str | None = None
+    # Persisted RAGFlow IDs remain aliases for document filters after reindexing.
     ragflow_document_id: str | None = None
     index_error: str | None = None
 
 
 class IndexRequest(StrictModel):
     dataset_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+UserIntent = Literal["lookup", "summarize", "compare", "how_to", "small_talk"]
 
 
 class ContextRequest(StrictModel):
@@ -56,6 +61,9 @@ class ContextRequest(StrictModel):
     top_k: int = Field(5, ge=1, le=20)
     similarity_threshold: float = Field(0.2, ge=0, le=1)
     max_context_chars: int = Field(12000, ge=500, le=40000)
+    intent: UserIntent | Literal["auto"] = Field(
+        "auto", description="自动识别用户意图，或指定本次请求的意图。"
+    )
 
     @field_validator("query")
     @classmethod
@@ -81,18 +89,19 @@ class Evidence(StrictModel):
 class ContextResponse(StrictModel):
     schema_version: str = "1.0"
     query: str
+    intent: UserIntent = Field(description="本次请求采用的用户意图。")
+    retrieval_query: str | None = Field(description="向量检索使用的查询。跳过检索时为 null。")
     context_text: str
     evidence: list[Evidence]
     assets: list[Asset]
     applied_filters: dict[str, Any]
     missing_information: list[str]
     truncated: bool = False
-    provider: str = "ragflow"
+    provider: str = "milvus"
 
 
 class ServiceError(Exception):
-    def __init__(self, message: str, status_code: int = 502, *, outcome_unknown: bool = False):
+    def __init__(self, message: str, status_code: int = 502):
         self.message = message
         self.status_code = status_code
-        self.outcome_unknown = outcome_unknown
         super().__init__(message)

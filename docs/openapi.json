@@ -303,6 +303,7 @@
       "post": {
         "summary": "Link Index",
         "operationId": "link_index_api_v1_documents__document_id__index_link_post",
+        "deprecated": true,
         "parameters": [
           {
             "name": "document_id",
@@ -326,13 +327,11 @@
           }
         },
         "responses": {
-          "200": {
+          "409": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Document"
-                }
+                "schema": {}
               }
             }
           },
@@ -497,6 +496,27 @@
             "minimum": 500.0,
             "title": "Max Context Chars",
             "default": 12000
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lookup",
+                  "summarize",
+                  "compare",
+                  "how_to",
+                  "small_talk"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "auto"
+              }
+            ],
+            "title": "Intent",
+            "description": "自动识别用户意图，或指定本次请求的意图。",
+            "default": "auto"
           }
         },
         "additionalProperties": false,
@@ -516,6 +536,30 @@
           "query": {
             "type": "string",
             "title": "Query"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "lookup",
+              "summarize",
+              "compare",
+              "how_to",
+              "small_talk"
+            ],
+            "title": "Intent",
+            "description": "本次请求采用的用户意图。"
+          },
+          "retrieval_query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Query",
+            "description": "向量检索使用的查询。跳过检索时为 null。"
           },
           "context_text": {
             "type": "string",
@@ -555,13 +599,15 @@
           "provider": {
             "type": "string",
             "title": "Provider",
-            "default": "ragflow"
+            "default": "milvus"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "query",
+          "intent",
+          "retrieval_query",
           "context_text",
           "evidence",
           "assets",
@@ -672,6 +718,18 @@
             ],
             "title": "Index Status",
             "default": "not_indexed"
+          },
+          "index_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "milvus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Provider"
           },
           "dataset_id": {
             "anyOf": [

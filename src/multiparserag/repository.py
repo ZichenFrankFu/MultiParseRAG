@@ -63,9 +63,15 @@ class Repository:
                 self.update(
                     doc.document_id, status="failed", error="进程中断，可重试同一解析任务。"
                 )
-            if doc.index_status == "uploading":
+            if doc.index_provider is None and doc.index_status != "not_indexed":
                 self.update(
                     doc.document_id,
-                    index_status="unknown",
-                    index_error="上传响应未确认，请在 RAGFlow 核对后关联已有文档。",
+                    index_status="not_indexed",
+                    index_error=None,
+                )
+            elif doc.index_provider == "milvus" and doc.index_status == "indexing":
+                self.update(
+                    doc.document_id,
+                    index_status="failed",
+                    index_error="索引提交中断，请重新提交 Milvus 索引。",
                 )

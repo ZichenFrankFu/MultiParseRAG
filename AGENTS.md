@@ -1,6 +1,6 @@
 # MultiParseRAG development
 
-- This repository is a thin integration layer around MinerU, MinIO and RAGFlow.
+- This repository is a thin integration layer around MinerU, MinIO, Milvus and an OpenAI-compatible embeddings API.
 - Keep parser, storage, retrieval and API contracts separate. Reuse upstream public APIs.
 - Current project version is 0.0.1. Update pyproject.toml and __init__.py together when releasing.
 - User-facing copy and README are in Chinese. Use plain, direct statements.

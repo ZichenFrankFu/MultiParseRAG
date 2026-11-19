@@ -1,4 +1,4 @@
-"""Opt-in real-service acceptance: PDF -> MinerU -> images -> optional RAGFlow."""
+"""Opt-in real-service acceptance: PDF -> MinerU -> images -> optional Milvus."""
 
 import argparse
 import time
@@ -46,28 +46,31 @@ with httpx.Client(base_url=args.base_url, headers=headers, timeout=90) as client
     )
     if args.dataset_id:
         response = client.post(
-            f"/api/v1/documents/{document_id}/index", json={"dataset_id": args.dataset_id}
+            f"/api/v1/documents/{document_id}/index",
+            json={"dataset_id": args.dataset_id},
+            timeout=600,
         )
         response.raise_for_status()
-        deadline = time.monotonic() + 600
         doc = response.json()
-        while doc["index_status"] == "indexing" and time.monotonic() < deadline:
-            time.sleep(3)
-            response = client.post(f"/api/v1/documents/{document_id}/index/refresh")
-            response.raise_for_status()
-            doc = response.json()
         if doc["index_status"] != "indexed":
             raise SystemExit(f"Index incomplete: {doc['index_status']}")
+        response = client.post(f"/api/v1/documents/{document_id}/index/refresh")
+        response.raise_for_status()
+        if response.json()["index_status"] != "indexed":
+            raise SystemExit("Milvus could not confirm the index")
         response = client.post(
             "/api/v1/context",
             json={
                 "query": args.query,
                 "dataset_ids": [args.dataset_id],
-                "document_ids": [doc["ragflow_document_id"]],
+                "document_ids": [document_id],
                 "similarity_threshold": 0,
             },
         )
         response.raise_for_status()
-        if not response.json()["evidence"]:
+        context = response.json()
+        if context["provider"] != "milvus" or not context["evidence"]:
             raise SystemExit("No evidence returned from the indexed document")
-        print("PASS: RAGFlow indexing and evidence retrieval verified")
+        if any(item["document_id"] != document_id for item in context["evidence"]):
+            raise SystemExit("Evidence returned from outside the selected document")
+        print(f"PASS: Milvus indexing and evidence retrieval verified, intent={context['intent']}")

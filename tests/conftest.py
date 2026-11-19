@@ -14,8 +14,10 @@ def settings(tmp_path):
         data_dir=tmp_path,
         storage_backend="local",
         public_base_url="http://testserver",
-        ragflow_dataset_ids="kb-1",
-        ragflow_api_key="test-key",
+        milvus_dataset_ids="kb-1",
+        embedding_model="test-embedding",
+        embedding_api_key="test-key",
+        embedding_dimension=3,
     )
 
 
